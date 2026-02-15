@@ -1,0 +1,26 @@
+[project]
+name = "field-mapper"
+version = "0.1.0"
+description = "Field-level conceptual structure reconstruction CLI"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "matplotlib>=3.10.0",
+  "networkx>=3.4",
+  "numpy>=2.2",
+  "pdfplumber>=0.11.5",
+  "questionary>=2.1.0",
+  "requests>=2.32.0",
+  "scikit-learn>=1.6.0",
+  "tqdm>=4.67.0",
+]
+
+[project.scripts]
+fieldmapper = "fieldmapper.cli:launch_cli"
+
+[build-system]
+requires = ["hatchling>=1.26.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["fieldmapper"]
