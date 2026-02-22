@@ -8,7 +8,11 @@ from questionary import Style
 
 from fieldmapper.config import PipelineConfig
 from fieldmapper.extraction.ollama_client import OllamaClient
-from fieldmapper.pipeline import regenerate_report_from_output, run_pipeline
+from fieldmapper.pipeline import (
+    regenerate_concept_map_from_output,
+    regenerate_report_from_output,
+    run_pipeline,
+)
 
 CLI_STYLE = Style(
     [
@@ -64,11 +68,34 @@ def launch_cli() -> int:
         choices=[
             "Full pipeline (extract + synthesize + report)",
             "Report only (reuse existing output folder)",
+            "Concept map only (reuse existing output folder)",
         ],
         style=CLI_STYLE,
     ).ask()
     if run_mode is None:
         return 1
+
+    # ── Concept map only mode (no LLM needed) ───────────────────────────────
+    if run_mode == "Concept map only (reuse existing output folder)":
+        existing_output_dir = _ask_path("Existing output folder path", "./output/")
+        questionary.print("\nRun configuration", style="bold fg:#e2e8f0")
+        questionary.print(f"- Mode: concept map only", style="fg:#cbd5e1")
+        questionary.print(f"- Output folder: {existing_output_dir}", style="fg:#cbd5e1")
+        questionary.print(f"- Reads: concept_clusters.json, cluster_edges.json", style="fg:#cbd5e1")
+        questionary.print(f"- Writes: concept_map.png, concept_map.html", style="fg:#cbd5e1")
+
+        confirm = questionary.confirm("Regenerate concept map now?", default=True, style=CLI_STYLE).ask()
+        if not confirm:
+            questionary.print("Cancelled.", style="fg:#f59e0b")
+            return 0
+
+        questionary.print("\nRendering concept map...", style="fg:#f59e0b")
+        outputs = regenerate_concept_map_from_output(output_dir=existing_output_dir)
+
+        questionary.print("\nCompleted successfully.", style="bold fg:#22c55e")
+        for name, path in outputs.items():
+            questionary.print(f"- {name}: {path}", style="fg:#93c5fd")
+        return 0
 
     preset = "Balanced (recommended)"
     if run_mode == "Full pipeline (extract + synthesize + report)":

@@ -328,3 +328,30 @@ def regenerate_report_from_output(
         outputs["theory_genealogy"] = theory_genealogy_path
     outputs.update(report_outputs)
     return outputs
+
+
+def regenerate_concept_map_from_output(output_dir: Path) -> dict[str, Path]:
+    out_dir = output_dir.expanduser().resolve()
+    if not out_dir.exists():
+        raise ValueError(f"Output directory does not exist: {out_dir}")
+
+    clusters_path = out_dir / "concept_clusters.json"
+    edges_path = out_dir / "cluster_edges.json"
+
+    missing = [p.name for p in (clusters_path, edges_path) if not p.exists()]
+    if missing:
+        raise ValueError(f"Cannot regenerate concept map: missing {', '.join(missing)}")
+
+    clusters = read_json(clusters_path)
+    edges = read_json(edges_path)
+
+    map_path = out_dir / "concept_map.png"
+    render_concept_map(clusters, edges, map_path)
+
+    map_html_path = out_dir / "concept_map.html"
+    render_concept_map_html(clusters, edges, map_html_path)
+
+    return {
+        "concept_map": map_path,
+        "concept_map_html": map_html_path,
+    }
