@@ -10,3 +10,10 @@ wheels/
 .venv
 
 papers
+
+# Generated outputs and large artifacts
+output/
+
+# Environment and OS files
+.env
+.DS_Store

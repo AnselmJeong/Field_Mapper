@@ -60,6 +60,98 @@ Discussion:
 Return ONLY valid JSON.
 """.strip()
 
+# ---------------------------------------------------------------------------
+# Theory Unit Extraction (Stage A)
+# ---------------------------------------------------------------------------
+
+THEORY_UNIT_EXTRACTION_SYSTEM_PROMPT = (
+    "You are identifying discrete theoretical models within a scientific field. "
+    "A theoretical model must: (1) propose a specific mechanism, "
+    "(2) make predictions that are in principle falsifiable, "
+    "(3) have a traceable intellectual origin — what problem it was created to address. "
+    "Do NOT conflate measurement concepts with theories. "
+    "'Functional connectivity' is a measurement concept. "
+    "'Predictive coding hypothesis' is a theory. "
+    "Return only valid JSON. No commentary, no markdown."
+)
+
+THEORY_UNIT_EXTRACTION_USER_TEMPLATE = """
+Below are concept clusters, knowledge-base theory dossiers, and paper summaries
+from a scientific corpus. Your task is to identify all discrete theoretical models
+that appear across the corpus.
+
+For each theory unit, extract:
+- name: precise name of the theoretical model/framework/hypothesis
+- origin_problem: the specific empirical or theoretical problem that motivated this theory
+- core_mechanism: what exactly this theory claims happens, step by step
+- predecessor_theories: list of theory names this one extended, replaced, or reacted to
+- novel_explanatory_gain: what this theory explained that predecessors could not
+- key_evidence: list of specific findings or experiments that support this theory
+- main_criticisms: list of the most substantive objections raised against it
+- successor_or_revision: how this theory was later modified, extended, or replaced
+- current_status: one of "dominant", "contested", "synthesized", "declining", "foundational"
+- paper_anchors: list of (Author, Year) citation strings from the corpus
+- cluster_ids: list of cluster_id integers this theory relates to
+
+Return a JSON array of theory unit objects.
+Include 4 to 12 theory units — only genuine theoretical models, not concepts.
+
+Concept clusters:
+{clusters_json}
+
+Knowledge base theory dossiers:
+{kb_theories_json}
+
+Paper summaries:
+{papers_compact_json}
+
+Return ONLY valid JSON array.
+""".strip()
+
+# ---------------------------------------------------------------------------
+# Theory Genealogy (Stage B)
+# ---------------------------------------------------------------------------
+
+THEORY_GENEALOGY_SYSTEM_PROMPT = (
+    "You are reconstructing the intellectual genealogy of a scientific field. "
+    "Your task is NOT a chronological list — it is a CAUSAL NARRATIVE. "
+    "Temporal direction is strict: only earlier theories can influence later ones. "
+    "Every theoretical transition must be causally explained: "
+    "WHY did the field move from Theory A to Theory B? "
+    "What empirical anomaly, methodological advance, or theoretical contradiction forced it? "
+    "Return only valid JSON. No commentary, no markdown."
+)
+
+THEORY_GENEALOGY_USER_TEMPLATE = """
+Given the theory units and publication timeline below, reconstruct the causal
+genealogy of theoretical development in this field.
+
+Return a JSON object with exactly these keys:
+- narrative: a continuous prose text of 2500-4000 words reconstructing the intellectual
+  evolution. Use explicit causal language: "X failed to explain Y, which led researchers
+  to propose Z because...". Use (Author, Year) citations throughout.
+- causal_chains: a JSON array of objects, each with:
+    - from_theory: name of predecessor theory
+    - limitation: what specific gap or failure drove the transition
+    - to_theory: name of successor theory
+    - trigger_mechanism: what empirical finding or logical argument made the transition happen
+    - approximate_period: e.g. "early 2000s", "post-2010"
+- dominant_paradigm_shifts: a JSON array of strings, each describing one major
+  field-level paradigm shift (2-5 items)
+
+Theory units:
+{theory_units_json}
+
+Publication timeline:
+{timeline_json}
+
+Return ONLY valid JSON with keys: narrative, causal_chains, dominant_paradigm_shifts.
+""".strip()
+
+# ---------------------------------------------------------------------------
+# Section Synthesis (field_synthesizer.py)
+# ---------------------------------------------------------------------------
+
 SYNTHESIS_SYSTEM_PROMPT = (
     "You are reconstructing the intellectual evolution of a scientific field. "
     "Do NOT summarize topics. Reconstruct theories as historical and mechanistic explanatory systems. "
@@ -92,85 +184,51 @@ Hard constraints:
 - Every section must contain concrete causal language ("A led to B because X mechanism").
 - Preserve evidence traceability with paper/year anchors when possible.
 
-Section requirements:
-1) executive_overview
-- Explain the core field-defining problem and why earlier explanations were insufficient.
-- Provide a high-level causal map of theory evolution (early model -> limitation -> successor model).
-- Include the dominant unresolved tensions.
-
-2) concept_taxonomy
-- This is not a glossary. Group concepts by theoretical role:
-  - explanatory primitives
-  - mechanism variables
-  - measurement/operational proxies
-  - outcome/phenotype-level constructs
-- Explain how these concept groups interact in causal chains.
-
-3) major_theoretical_models
-- Reconstruct each major theory as a full intellectual object:
-  - Origin problem
-  - Core mechanism
-  - Novel explanatory gain vs predecessors
-  - Key supporting evidence
-  - Main criticisms
-  - Later revisions/replacements
-  - Current status (dominant/contested/declining)
-- Include at least 4 distinct theories when evidence allows.
-- For each theory, write substantial detail, not bullet fragments.
-
-4) methodological_landscape
-- Explain how methods enabled or constrained theory claims.
-- Compare methods by inferential power, blind spots, and reproducibility risks.
-- Explicitly connect methodological choices to theoretical disputes.
-
-5) controversies
-- Map concrete conflict structures:
-  - claim A vs claim B
-  - what data each side relies on
-  - where interpretations diverge
-  - what evidence would adjudicate the dispute
-- Avoid vague "there are debates" wording.
-
-6) research_trajectory
-- Reconstruct the genealogy:
-  THEORY A -> limitation/anomaly -> THEORY B -> empirical conflict -> THEORY C ...
-- Explain why transitions happened, not just chronological listing.
-
-7) open_problems
-- Define unresolved mechanistic questions precisely.
-- For each open problem, specify:
-  - what is unknown
-  - why current models fail
-  - what decisive empirical test could resolve it
-
 Return ONLY valid JSON.
 """.strip()
 
 SECTION_SYNTHESIS_SYSTEM_PROMPT = (
     "You are reconstructing the intellectual evolution of a scientific field. "
     "Do NOT summarize vaguely. Use concrete mechanisms, conflicts, and evidence anchors. "
-    "Write analytically and avoid generic filler."
+    "Write analytically. Generic filler and section-to-section repetition are unacceptable."
 )
 
 SECTION_SYNTHESIS_USER_TEMPLATE = """
 Target section: {section_name}
 Target key: {section_key}
-Preferred language: English
+
+Previously written sections — DO NOT repeat the same claims, examples, or theory descriptions:
+{context_so_far}
+
+Theory units identified in this corpus:
+{theory_units_json}
+
+Theory genealogy data:
+{genealogy_excerpt}
 
 Evidence bundle (JSON):
 {evidence_json}
 
-Writing requirements:
-- Focus only on the target section.
-- Use specific claims grounded in the evidence bundle.
-- Include at least 2 explicit cause-effect chains.
-- Mention concrete theory/model names and cite in `Author, Year` style only.
-- Do NOT expose internal IDs such as `paper_XXX`.
-- Do not output bullets unless needed for clarity.
-- Target length: 500-900 words.
+Section-specific requirements:
+{section_instructions}
 
-Return ONLY plain text for this section body (no markdown heading, no JSON).
+General writing requirements:
+- Write in English.
+- Avoid bullet lists unless strictly necessary for parallel structure.
+- Cite with (Author, Year) style only. Never wrap citations in backticks.
+- Temporal direction is strict: newer work may refine or challenge older work, never the reverse.
+- Do NOT expose internal IDs such as paper_XXX.
+- Do NOT repeat content from the previously written sections shown above.
+- Include at least 3 explicit cause-effect statements.
+- Short, vague, or generic answers are unacceptable.
+- Target word count: {word_target}
+
+Return ONLY plain text for this section body (no markdown heading, no JSON wrapper).
 """.strip()
+
+# ---------------------------------------------------------------------------
+# Review / Narrative Rewrite (review_writer.py)
+# ---------------------------------------------------------------------------
 
 REVIEW_WRITER_SYSTEM_PROMPT = (
     "You are an expert narrative review writer and historian of science. "
@@ -185,16 +243,17 @@ You will receive:
 3) A raw outline report in markdown
 
 Your task:
-- Write a human-readable review-style report in Korean.
+- Write a human-readable review-style report.
 - Maintain analytical rigor and conceptual clarity.
 - Do not dump JSON or key-value lists.
 - Use cohesive paragraphs and transitions.
 - Keep section headings exactly:
-  # Executive Overview
-  # Concept Taxonomy
+  # Field Landscape
+  # Conceptual Architecture
+  # Theory Genealogy
   # Major Theoretical Models
   # Methodological Landscape
-  # Controversies
+  # Theoretical Fault Lines
   # Research Trajectory
   # Open Problems
 
@@ -203,8 +262,9 @@ Writing requirements:
 - Explain relationships between concepts and paradigms using explicit causal statements.
 - Compare competing models with concrete contrasts and adjudicating evidence.
 - Discuss methodological tradeoffs and limitations as drivers of theoretical disagreement.
-- Expand each section substantially (target 700-1200 words per section).
-- End each section with 2-3 forward-looking insights.
+- Temporal order must be explicit and non-contradictory: older work can influence newer work only.
+- Prohibit reversed chronology statements.
+- Expand each section substantially (target 2000-3000 words per section).
 - Avoid repeating identical phrases across sections.
 - No code block, no raw JSON, no Python-style dict/list rendering.
 - Generic, high-level summaries are unacceptable.
@@ -222,7 +282,7 @@ Return ONLY markdown text for the final narrative report.
 """.strip()
 
 REVIEW_REWRITE_ONLY_USER_TEMPLATE = """
-Rewrite the following raw markdown report into a polished Korean narrative review article.
+Rewrite the following raw markdown report into a polished narrative review article.
 
 Rules:
 - Keep section headings exactly as-is.
@@ -240,6 +300,9 @@ Return ONLY markdown text.
 REVIEW_SECTION_REWRITE_USER_TEMPLATE = """
 Rewrite one section of a raw review outline into polished {language} academic prose.
 
+Sections already written (avoid repeating the same theories, examples, or arguments):
+{accumulated_context}
+
 Rules:
 - Keep the heading exactly unchanged.
 - Turn bullet fragments and list-like content into coherent, publication-quality paragraphs.
@@ -247,12 +310,16 @@ Rules:
 - Preserve factual claims from the source; do not fabricate.
 - Reconstruct argument structure, not descriptive listing.
 - Explain mechanisms, causal links, and theory-to-theory transitions where relevant.
+- Keep chronology directionally valid: only newer studies can refine or revise older studies.
+- Never claim that an earlier-year paper was refined/extended/updated by a later-year predecessor.
+- If year ordering cannot be verified from section content, avoid directional evolution verbs.
 - Include concrete contrasts between competing explanations.
-- Each section must be substantially expanded (target: 700-1200 words).
+- Each section must be substantially expanded (target: 2000-3000 words).
 - Generic statements (e.g., "many studies show...", "there were many changes") are unacceptable.
 - Conclude with 2-3 forward-looking insight sentences grounded in the section's analysis.
-- Citation format must be consistent: use only `(Author, Year)` style in-text.
-- Never expose internal IDs such as `paper_XXX`.
+- Citation format must be consistent: use only (Author, Year) style in-text.
+- Never wrap citations in backticks.
+- Never expose internal IDs such as paper_XXX.
 
 Supplemental context for this section:
 {supplemental_context}
@@ -260,7 +327,7 @@ Supplemental context for this section:
 Citation registry:
 {citation_registry}
 
-If the section contains dossier entries with `### <name>` items:
+If the section contains dossier entries with ### <name> items:
 - You must explicitly explain every listed item by name at least once.
 - Use dossier evidence (mechanism/evidence/limitations) to build detailed paragraphs.
 

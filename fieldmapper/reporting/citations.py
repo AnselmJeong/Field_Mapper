@@ -43,6 +43,40 @@ def build_citation_registry(structured_papers: list[dict[str, Any]]) -> dict[str
     return registry
 
 
+def _bib_safe(value: Any) -> str:
+    text = str(value or "").strip()
+    return text.replace("{", "\\{").replace("}", "\\}")
+
+
+def _bib_key(item: dict[str, str]) -> str:
+    author = re.sub(r"[^A-Za-z0-9]+", "", item.get("first_author", "unknown")) or "unknown"
+    year = re.sub(r"[^0-9a-zA-Z]+", "", item.get("year", "nd")) or "nd"
+    paper_id = re.sub(r"[^A-Za-z0-9]+", "", item.get("paper_id", "paper"))
+    return f"{author}{year}_{paper_id}"
+
+
+def render_bibtex_from_registry(registry: dict[str, dict[str, str]]) -> str:
+    entries: list[str] = []
+    for paper_id in sorted(registry):
+        item = registry[paper_id]
+        key = _bib_key(item)
+        author = _bib_safe(item.get("first_author", "Unknown"))
+        year = _bib_safe(item.get("year", "n.d."))
+        title = _bib_safe(item.get("title", "Untitled"))
+        lines = [
+            f"@article{{{key},",
+            f"  author = {{{author}}},",
+            f"  title = {{{title}}},",
+            f"  year = {{{year}}},",
+            f"  note = {{{_bib_safe(item.get('paper_id', ''))}}}",
+            "}",
+        ]
+        entries.append("\n".join(lines))
+    if not entries:
+        return ""
+    return "\n\n".join(entries) + "\n"
+
+
 def render_citation_registry_markdown(registry: dict[str, dict[str, str]]) -> str:
     lines: list[str] = []
     for paper_id in sorted(registry):
@@ -101,4 +135,5 @@ def normalize_citation_style(text: str, registry: dict[str, dict[str, str]]) -> 
     # Remove markdown backticks around citation-like fragments.
     out = re.sub(r"`\s*(\([^`]*\d{4}[^`]*\))\s*`", r"\1", out)
     out = re.sub(r"`\s*([^`]*\([A-Za-z][^`]*\d{4}[^`]*\)[^`]*)\s*`", r"\1", out)
+    out = re.sub(r"`\s*([A-Z][^`,]{0,80}?,\s*\d{4}[a-z]?)\s*`", r"\1", out)
     return out

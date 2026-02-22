@@ -10,7 +10,9 @@ class PipelineConfig:
     output_dir: Path
     llm_model: str = "mistral-large-3:675b-cloud"
     ollama_url: str = "http://127.0.0.1:11434"
-    report_language: str = "Korean"
+    report_language: str = "English"
+    write_model_tagged_report: bool = True
+    write_report_bib: bool = True
     similarity_threshold: float = 0.82
     max_intro_chars: int = 9000
     max_discussion_chars: int = 9000

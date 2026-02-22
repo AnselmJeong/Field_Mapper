@@ -7,17 +7,23 @@ from fieldmapper.extraction.ollama_client import OllamaClient
 from fieldmapper.extraction.prompts import REVIEW_SECTION_REWRITE_USER_TEMPLATE, REVIEW_WRITER_SYSTEM_PROMPT
 from fieldmapper.reporting.citations import normalize_citation_style, render_citation_registry_markdown
 from fieldmapper.reporting.knowledge_base import render_method_dossiers_markdown, render_theory_dossiers_markdown
+from fieldmapper.reporting.report_generator import REPORT_HEADINGS
 
 SECTION_PATTERN = re.compile(r"(^# .+?$)(.*?)(?=^# |\Z)", re.MULTILINE | re.DOTALL)
-EXPECTED_HEADINGS = [
-    "# Executive Overview",
-    "# Concept Taxonomy",
+EXPECTED_HEADINGS = REPORT_HEADINGS
+
+# Headings that get theory dossiers as supplemental context
+_THEORY_CONTEXT_HEADINGS = {
     "# Major Theoretical Models",
-    "# Methodological Landscape",
-    "# Controversies",
-    "# Research Trajectory",
+    "# Theory Genealogy",
+    "# Theoretical Fault Lines",
     "# Open Problems",
-]
+}
+
+# Headings that get method dossiers as supplemental context
+_METHOD_CONTEXT_HEADINGS = {
+    "# Methodological Landscape",
+}
 
 
 def _normalize(text: str) -> str:
@@ -44,13 +50,11 @@ def _repair_markdown_structure(markdown: str) -> str:
     if not text:
         return text
 
-    # Ensure each expected heading starts on its own line.
     for heading in EXPECTED_HEADINGS:
         text = text.replace(heading, f"\n\n{heading}\n\n")
 
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
 
-    # If text is suspiciously collapsed, add soft paragraph breaks every few sentences.
     line_count = text.count("\n") + 1
     if line_count <= 20 and len(text) > 20000:
         repaired_sections: list[str] = []
@@ -70,10 +74,32 @@ def _repair_markdown_structure(markdown: str) -> str:
     return text + "\n"
 
 
+def _build_supplemental(
+    heading: str,
+    theory_context: str,
+    method_context: str,
+    accumulated_context: str,
+) -> str:
+    """Assemble per-section supplemental context for the rewrite prompt."""
+    parts: list[str] = []
+
+    if heading in _THEORY_CONTEXT_HEADINGS and theory_context:
+        parts.append("=== Theory Dossiers ===\n" + theory_context)
+
+    if heading in _METHOD_CONTEXT_HEADINGS and method_context:
+        parts.append("=== Method Dossiers ===\n" + method_context)
+
+    if accumulated_context:
+        parts.append("=== Previously Rewritten Sections (avoid repetition) ===\n" + accumulated_context)
+
+    return "\n\n".join(parts) if parts else "No additional context."
+
+
 def _rewrite_one_section(
     heading: str,
     body: str,
     supplemental_context: str,
+    accumulated_context: str,
     citation_registry: str,
     report_language: str,
     llm_model: str,
@@ -82,6 +108,7 @@ def _rewrite_one_section(
     source_section = f"{heading}\n{body}".strip()
     prompt = REVIEW_SECTION_REWRITE_USER_TEMPLATE.format(
         language=report_language,
+        accumulated_context=accumulated_context or "None yet — this is the first section being rewritten.",
         supplemental_context=supplemental_context,
         citation_registry=citation_registry,
         section_markdown=source_section,
@@ -135,18 +162,21 @@ def generate_review_report_markdown(
 
     rewritten_sections: list[str] = []
     headings_seen: list[str] = []
+    accumulated_context = ""  # Grows as sections are rewritten
 
     for heading, body in sections:
-        supplemental_context = "No additional context."
-        if heading == "# Major Theoretical Models":
-            supplemental_context = theory_context or supplemental_context
-        elif heading == "# Methodological Landscape":
-            supplemental_context = method_context or supplemental_context
+        supplemental_context = _build_supplemental(
+            heading=heading,
+            theory_context=theory_context,
+            method_context=method_context,
+            accumulated_context=accumulated_context,
+        )
 
         rewritten = _rewrite_one_section(
             heading=heading,
             body=body,
             supplemental_context=supplemental_context,
+            accumulated_context=accumulated_context,
             citation_registry=citation_registry,
             report_language=report_language,
             llm_model=llm_model,
@@ -155,6 +185,13 @@ def generate_review_report_markdown(
         rewritten_sections.append(rewritten)
         headings_seen.append(heading)
 
+        # Accumulate: short summary of this section for future sections
+        # Strip the heading line, take the first ~300 chars of prose
+        body_text = rewritten.replace(heading, "").strip()
+        summary = body_text.replace("\n", " ")[:300].strip()
+        accumulated_context += f"\n- {heading}: {summary}..."
+
+    # Validate that all expected sections are present
     for heading in EXPECTED_HEADINGS:
         if heading not in headings_seen:
             raise RuntimeError(f"Missing expected section in raw report: {heading}")
